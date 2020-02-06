@@ -3,6 +3,7 @@ import sublime
 import sublime_plugin
 import webbrowser
 import os
+import re
 import textwrap
 from html import escape
 from .core.configurations import is_supported_syntax
@@ -133,6 +134,7 @@ class LspHoverCommand(LspTextCommand):
             actions.append("<a href='{}'>{}</a>".format('references', 'References'))
         if self.has_client_with_capability('renameProvider'):
             actions.append("<a href='{}'>{}</a>".format('rename', 'Rename'))
+        actions.append("<a href='{}'>{}</a>".format('popout', 'Popout'))
         return "<p>" + " | ".join(actions) + "</p>"
 
     def format_diagnostic_related_info(self, info: DiagnosticRelatedInformation) -> str:
@@ -188,6 +190,8 @@ class LspHoverCommand(LspTextCommand):
                     contents = [response_content]
 
         formatted = []
+        self._formatted_plain = ""
+        print(contents)
         for item in contents:
             value = ""
             language = None
@@ -196,6 +200,12 @@ class LspHoverCommand(LspTextCommand):
             else:
                 value = item.get("value")
                 language = item.get("language")
+
+            self._formatted_plain += value
+            # self._formatted_plain += re.sub(r"\n([^\n])", r"\1", value)
+            self._formatted_plain += "\n"
+            # if language:
+            #     self._formatted_plain += "\n"
 
             if '\n' not in value:
                 value = "\n".join(textwrap.wrap(value, 80))
@@ -242,6 +252,24 @@ class LspHoverCommand(LspTextCommand):
             self.run_command_from_point(point, "lsp_symbol_references")
         elif href == 'rename':
             self.run_command_from_point(point, "lsp_symbol_rename")
+        elif href == "popout":
+            content = self._formatted_plain
+            if not content:
+                return
+            window = self.view.window()
+            panel_name_suffix = 'hhhhh'
+            panel_name_full = 'output.' + panel_name_suffix
+            panel = window.find_output_panel(panel_name_full)
+            if panel is None:
+                panel = window.create_output_panel(panel_name_suffix)
+            panel.settings().set('word_wrap', True)
+            panel.settings().set('spell_check', False)
+            # panel.settings().set('syntax', "Packages/ANSIescape/ANSI.sublime-syntax")
+            panel.set_syntax_file("Packages/ANSIescape/ANSI.sublime-syntax")
+
+            panel.run_command('append', {'characters': content})
+            window.run_command('show_panel', {'panel': panel_name_full})
+
         elif href.startswith('code-actions'):
             _, config_name = href.split(":")
             titles = [command["title"] for command in self._actions_by_config[config_name]]
